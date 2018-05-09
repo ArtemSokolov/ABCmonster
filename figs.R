@@ -21,13 +21,49 @@ cv2auc <- function( X )
 ## "Boldifies" a text element
 etxt <- function(s, ...) element_text( face="bold", size=s, ... )
 
+## Computes correlation between predictions and true labels
+pred.plot <- function()
+{
+    ## Load predictions and true labels
+    Ytrue <- read_csv( "data/test-labels.csv" )
+    Ypred <- read_tsv( "results/gbm-pred.tsv" )
+
+    ## Define plot elements
+    cl1 <- "tomato"
+    cl2 <- "wheat"
+    fpal <- colorRampPalette( c(cl1,cl2) )
+    sg <- guide_legend( override.aes = list(fill=fpal(4)), title="Correlation",
+                       keyheight=c(0.2,0.3,0.4,0.6), keywidth=0.75, default.unit="inch")
+    
+    ## Compute Spearman correlations between true labels and predictions
+    ##   for each method
+    X <- inner_join( Ytrue, Ypred ) %>%
+        summarize_at( vars(MACCSbin:Morgan), funs(cor(.,GMsens,method="sp")) ) %>%
+        rename( `MACCS(binary)` = MACCSbin, `MACCS(count)` = MACCScnt,
+               Physicochemical = PChem, `Morgan/ECFP` = Morgan ) %>%
+        gather( Features, Corr. ) %>% mutate( ` ` = "GBM", Experiment = "Prospective" ) %>%
+        mutate( Corr. = pmin( Corr., 0.535 ) )
+
+    ggplot( X, aes( x = Features, y = ` `, fill = `Corr.`, size=`Corr.` ) ) +
+        theme_bw() + geom_point( shape = 23, color="black" ) +
+        scale_radius( range = c(2,15), breaks=seq(0.2,0.5,0.1), limits=c(0.185,0.535) ) +
+        scale_fill_gradient( limits=c(0.185,0.535), low=cl1, high=cl2 ) +
+        facet_wrap( ~Experiment ) +
+        theme( axis.text.y = etxt(11), axis.title = etxt(12),
+              axis.text.x = etxt(11, angle=90, hjust=1, vjust=0.5), 
+              panel.grid.major = element_line( linetype = "dashed", color="gray70" ),
+              legend.title = etxt(14), legend.text = etxt(12),
+              strip.text = etxt(12), strip.background=element_rect( fill="gray95" ) ) +
+        guides( fill=FALSE, size=sg )
+}
+
 ## Compares cross-validation results across methods and datasets
 AUC.plot <- function()
 {
     ## Common set of operations applied to each file
     f <- function( fnIn, lbl )
     { read_csv( fnIn, col_types = cols() ) %>% cv2auc %>%
-          mutate( Data = lbl ) %>%
+          mutate( Features = lbl ) %>%
           rename( `k-NN` = knn, GBM = gbm, `Log.Reg.` = glmnet, SVM = svmLinear, NNet = nnet ) %>%
           gather( Method, AUC, `k-NN`:NNet ) }
     
@@ -36,8 +72,9 @@ AUC.plot <- function()
                     f( "results/MACCScount-cv.csv.gz", "MACCS(count)" ),
                     f( "results/PChem-cv.csv.gz", "PhysicoChemical" ),
                     f( "results/Morgan-cv.csv.gz", "Morgan/ECFP" ) ) %>%
-        group_by( Data, Method ) %>% summarize( AUC = mean(AUC) ) %>%
-        mutate( AUC = pmin( AUC, 0.73 ) )
+        group_by( Features, Method ) %>% summarize( AUC = mean(AUC) ) %>%
+        mutate( AUC = pmin( AUC, 0.73 ) ) %>%	## Clip 0.731 to 0.73 for visualization purposes
+        ungroup %>% mutate( Experiment = "Cross Validation" )
 
     ## Define plot elements
     cl1 <- "#203c52"
@@ -46,16 +83,35 @@ AUC.plot <- function()
     sg <- guide_legend( override.aes = list( fill = fpal(5) ) )
     
     ## Make a summary plot
-    gg <- ggplot( XX, aes( x = Data, y = Method, size = AUC, fill = AUC ) ) +
+    ggplot( XX, aes( x = Features, y = Method, size = AUC, fill = AUC ) ) +
         theme_bw() + geom_point( shape = 21, color="black" ) +
         scale_radius( range = c(2,15), breaks=seq(0.61,0.73,0.03), limits=c(0.61,0.73) ) +
         scale_fill_gradient( limits=c(0.61,0.73), low=cl1, high=cl2 ) +
-        theme( axis.text.y = etxt(11), axis.title = etxt(12),
-              axis.text.x = etxt(11, angle=90, hjust=1, vjust=0.5), 
+        facet_wrap( ~Experiment ) +
+        theme( axis.text.y = etxt(11), axis.title.y = etxt(12, hjust=0),
+              axis.text.x = element_blank(), axis.title.x = element_blank(),
+              axis.ticks.x = element_blank(),
               panel.grid.major = element_line( linetype = "dashed", color="gray70" ),
-              legend.title = etxt(14), legend.text = etxt(12) ) +
+              legend.title = etxt(14), legend.text = etxt(12),
+              strip.text = etxt(12), strip.background=element_rect( fill="gray95" ) ) +
         guides( size = sg, fill=FALSE )
-    ggsave( "FigX.pdf", gg, width=5.25, height=6 )
+##    ggsave( "FigX.pdf", gg, width=5.25, height=6 )
+}
+
+## Combines pred.plot() and AUC.plot() into the same figure
+Fig.S2 <- function()
+{
+    ## Generate each plot and combine them into a common tableGrob
+    gg1 <- AUC.plot()
+    gg2 <- pred.plot()
+    gt <- gridExtra::arrangeGrob( gg1, gg2, ncol=1, heights=c(1.5,1) )
+
+    ## Adjust widths to match
+    gt$grobs[[2]]$widths <- gt$grobs[[1]]$widths
+    
+    grid::grid.newpage()
+    grid::grid.draw(gt)
+    ggsave( "Fig-perf.pdf", gt, width=5.5, height=7 )
 }
 
 ## Principal component analysis and multi-dimensional scaling plots
