@@ -7,6 +7,9 @@ library( cba )
 library( pheatmap )
 library( gridExtra )
 
+## Location of the binary MACCS features
+fnMACCS <- "../data/MACCSbinary.RData"
+
 ## Given a matrix, returns hierarchical clustering with optimal leaf re-ordering
 ## aux.D is an auxiliary distance matrix to be added on top of the data-driven distance matrix
 orderRows <- function( X, aux.D = NULL )
@@ -74,6 +77,10 @@ clusCoord <- function( tr, n )
     0.5*(coord[j1] + coord[j2])
 }
 
+## Defines a palette for the sensitive / resistant distinction
+ABCpal <- function()
+{ c("Resistant" = "tomato", "Sensitive" = "steelblue") }
+
 ## A subfigure with a single heatmap
 ## XY - dataset to plot
 ## pfx - prefix of cluster annotations
@@ -87,7 +94,6 @@ fig1sub <- function( XY, pfx, nClusters )
     ## Compose the column annotations
     YY <- select( XY, pubchem_id, Label ) %>% as.data.frame %>%
         column_to_rownames( "pubchem_id" )
-    YYpal <- list( Label = c("Resistant" = "tomato", "Sensitive" = "steelblue") )
 
     ## Cluster rows and columns
     DD <- pamDistMatrix( HH, nClusters, 5 )
@@ -96,7 +102,7 @@ fig1sub <- function( XY, pfx, nClusters )
 
     ph <- pheatmap( HH, cluster_cols = hcc, cluster_rows = hcr,
                    cutree_rows = nClusters, color = c("gray90","gray30"),
-                   annotation_col = YY, annotation_colors = YYpal,
+                   annotation_col = YY, annotation_colors = list( Label = ABCpal() ),
                    annotation_names_col = FALSE, annotation_legend = TRUE,
                    show_rownames = FALSE, show_colnames = FALSE, silent=TRUE )
     gg <- ph$gtable
@@ -124,7 +130,7 @@ fig1sub <- function( XY, pfx, nClusters )
 fig1A <- function()
 {
     ## Load MACCS binary data and reduce to training samples
-    load( "data/MACCSbinary.RData" )
+    load( fnMACCS )
     
     ## Create a heatmap over the Substructure space only
     hh <- MACCSbinary %>% filter( !is.na(Label) ) %>% fig1sub( "S", 8 )
@@ -146,7 +152,7 @@ etxt <- function(s, ...) element_text( face="bold", size=s, ... )
 fig1B <- function()
 {
     ## Load raw data
-    load( "data/MACCSbinary.RData" )
+    load( fnMACCS )
     X <- MACCSbinary %>% filter( !is.na(Label) )
 
     ## Compute PCA
@@ -161,7 +167,7 @@ fig1B <- function()
         geom_point() + theme_bw() + ggtitle( "Principal Component Analysis" ) +
         xlab( str_c( "PC1: ", round(pcvar[1],1), "% variance" ) ) +
         ylab( str_c( "PC2: ", round(pcvar[2],1), "% variance" ) ) +
-        scale_color_manual( values=c("Sensitive"="tomato", "Resistant"="steelblue"), guide=FALSE ) +
+        scale_color_manual( values=ABCpal(), guide=FALSE ) +
         theme( axis.title = etxt(12), axis.text = etxt(10),
 ##              legend.title = element_blank(), legend.text = etxt(12),
 ##              legend.position=c(.18, .1), legend.background = element_rect( color="black" ),
@@ -181,7 +187,7 @@ fig1C <- function()
     ban2 <- c( c(9568614, 4594), c(33036,2725) )
     
     ## Load raw data
-    load( "data/MACCSbinary.RData" )
+    load( fnMACCS )
     X <- MACCSbinary %>% filter( !is.na(Label) ) %>%
         filter( !(pubchem_id %in% ban1) ) %>%
         filter( !(pubchem_id %in% ban2) )
@@ -193,7 +199,7 @@ fig1C <- function()
     ## Plot the projections
     gg <- ggplot( M, aes( x = MDS1, y = MDS2, color = Label ) ) +
         geom_point() + theme_bw() + ggtitle( "Multi-Dimensional Scaling" ) +
-        scale_color_manual( values=c("Sensitive"="tomato", "Resistant"="steelblue"), guide=FALSE ) +
+        scale_color_manual( values=ABCpal(), guide=FALSE ) +
         scale_y_continuous( breaks=seq(-4,4,2) ) +
         scale_x_continuous( breaks=seq(-4,4,2) ) +
         theme( axis.title = etxt(12), axis.text = etxt(10),
@@ -213,7 +219,7 @@ tSNE.plot <- function()
     ban2 <- c( c(9568614, 4594), c(33036,2725) )
     
     ## Load raw data
-    X <- read_csv( "data/MACCSbinary.csv" ) %>% filter( !is.na(Label) ) %>%
+    X <- read_csv( fnMACCS ) %>% filter( !is.na(Label) ) %>%
         filter( !(pubchem_id %in% ban1) ) %>%
         filter( !(pubchem_id %in% ban2) ) %>%
         mutate( Label = factor( Label, c(1,0) ) )
@@ -227,7 +233,7 @@ tSNE.plot <- function()
     ## Plot the projections
     ggplot( P, aes( x = `t-SNE1`, y = `t-SNE2`, color = Label ) ) +
         geom_point() + theme_bw() + ggtitle( "t-Stochastic Neighbor Embedding" ) +
-        scale_color_manual( values=c("Sensitive"="tomato", "Resistant"="steelblue"), guide=FALSE ) +
+        scale_color_manual( values=ABCpal(), guide=FALSE ) +
         theme( axis.title = etxt(14), axis.text = etxt(12),
               plot.title = element_text( face="bold" ) )
 }
