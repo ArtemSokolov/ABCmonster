@@ -39,3 +39,36 @@ fig4a <- function()
 
     gt
 }
+
+## Panel B
+fig4b <- function()
+{
+    ## Load validation data
+    load( "../data/ABCvaldata.RData" )
+    
+    ## Define the color palette and other graphical elements
+    pal <- c( "Parental"="tomato", "Equal"="black", "ABC16"="steelblue" )
+
+    ## Compute the overall response as the sum across dose-specific values
+    S <- ABCvaldata %>% group_by( Drug, Abbrev, Replicate ) %>%
+        summarize_at( vars(ABC16, Parental), sum ) %>%
+        mutate( Value = -log2(ABC16 / Parental) ) %>% ungroup %>%
+        select( -ABC16, -Parental ) %>% spread( Replicate, Value ) %>%
+        mutate( Sensitivity = cut(`1`, c(-Inf, -0.1,0.1, Inf), labels=names(pal)) )
+
+    ## Graphical elements
+    rng <- select( S, `1`, `2` ) %>% range
+
+    ## Plot the two replicates against each other
+    ggplot( S, aes( x = `1`, y = `2`, color = Sensitivity ) ) +
+        geom_point() + theme_bw() + scale_color_manual( values = pal ) +
+        xlab( "Replicate 1 -log2(ABC-16 / parental)" ) +
+        ylab( "Replicate 2 -log2(ABC-16 / parental)" ) +
+        xlim( rng ) + ylim( rng ) +
+        geom_abline( slope = 1, linetype = "dashed", color = "gray40" ) +
+        ggrepel::geom_text_repel( aes(label = Abbrev), fontface="bold", show.legend=FALSE ) +
+        theme( axis.text = etxt(11), axis.title = etxt(12),
+              legend.title = etxt(12), legend.text = etxt(11),
+              legend.position = c(0.95,0.05), legend.justification = c(1,0),
+              legend.background = element_rect( color="black", fill="white" ) )
+}
