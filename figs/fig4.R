@@ -8,6 +8,9 @@ library( ggnetwork )
 ## Short-hand for boldface element_text() of desired size
 etxt <- function( s, ... ) { element_text( size=s, face="bold", ... ) }
 
+## Margins for panels within composite plot
+panmar <- unit(c(0.1,0.1,0.1,0.3),"in")
+
 ## Panel A
 fig4a <- function()
 {
@@ -31,7 +34,8 @@ fig4a <- function()
         theme( axis.text.y = etxt(11), legend.text = etxt(11),
               axis.text.x = etxt( 11, angle=90, vjust=0.5, hjust=1 ),
               axis.title = etxt(12), legend.title = etxt(12), legend.position = "bottom",
-              panel.spacing.x = ss, strip.text.x = etxt(11, margin = margin(0.1,0,0.1,0,"cm")) )
+              panel.spacing.x = ss, strip.text.x = etxt(11, margin = margin(0.1,0,0.1,0,"cm")),
+              plot.margin = panmar )
 
     ## Fix overlap in the x axis
     gt <- ggplotGrob(gg)
@@ -69,9 +73,11 @@ fig4b <- function()
         geom_abline( slope = 1, linetype = "dashed", color = "gray40" ) +
         ggrepel::geom_text_repel( aes(label = Abbrev), fontface="bold", show.legend=FALSE ) +
         theme( axis.text = etxt(11), axis.title = etxt(12),
+              axis.title.y = element_text( hjust=0 ),
               legend.title = etxt(12), legend.text = etxt(11),
               legend.position = c(0.95,0.05), legend.justification = c(1,0),
-              legend.background = element_rect( color="black", fill="white" ) )
+              legend.background = element_rect( color="black", fill="white" ),
+              plot.margin = panmar )
 }
 
 ## Computes Tanimoto (Jaccard) similarity for two MACCS keys profiles
@@ -123,13 +129,13 @@ fig4c <- function()
 
     ## Compose the bipartite graph matrix
     N1 <- R %>% select( vertex.names = Abbrev, Sensitivity = Sens ) %>%
-        mutate( x=fx(0.2), xend=fx(0.2), y=fy(), yend=fy()+0.001, na.x=FALSE, na.y=NA ) %>%
+        mutate( x=fx(0.2), xend=fx(0.2), y=fy(), yend=fy()+0.001, na.x=FALSE, na.y=NA, hj=0.5 ) %>%
         mutate_at( "Sensitivity", recode, !!!set_names(sensLbls, c("ABC16", "Parental")) )
     N2 <- R %>% select( vertex.names = pubchem_id, Sensitivity = Label ) %>%
-        mutate( x=fx(0.8), xend=fx(0.8), y=fy(), yend=fy()+0.001, na.x=FALSE, na.y=NA ) %>%
+        mutate( x=fx(0.8), xend=fx(0.8), y=fy(), yend=fy()+0.001, na.x=FALSE, na.y=NA, hj=0.75 ) %>%
         mutate_at( "Sensitivity", recode, !!!set_names(sensLbls, c("Sensitive", "Resistant")) )
     E <- R %>% select( vertex.names = Abbrev, Sensitivity = Sens, Tanimoto ) %>%
-        mutate( x=fx(0.2), xend=fx(0.8), y=fy(), yend=fy()+0.001, na.x=FALSE, na.y=FALSE ) %>%
+        mutate( x=fx(0.2), xend=fx(0.8), y=fy(), yend=fy()+0.001, na.x=FALSE, na.y=FALSE, hj=0.5 ) %>%
         mutate_at( "Sensitivity", recode, !!!set_names(sensLbls, c("ABC16", "Parental")) ) %>%
         mutate_at( "Tanimoto", ~as.character(round(.x,2)) )
     BG <- bind_rows( N1, N2, E )
@@ -140,10 +146,27 @@ fig4c <- function()
     ## Plot the bipartite graph
     ggplot( BG, aes(x = x, y = y, xend = xend, yend = yend) ) + theme_blank() +
         geom_edges( color="gray40", lwd=1.25 ) +
-        geom_nodes( aes(color=Sensitivity), size=8 ) +
-        geom_nodetext( aes(label=vertex.names), nudge_y = -0.04, fontface="bold" ) +
-        geom_edgetext( aes(label=Tanimoto), color="black", fontface="bold" ) +
+        geom_nodes( aes(color=Sensitivity), size=5 ) +
+        geom_nodetext( aes(label=vertex.names, hjust=hj), nudge_y = -0.06, fontface="bold", size=3 ) +
+        geom_edgetext( aes(label=Tanimoto), color="black", fontface="bold", size=3 ) +
         scale_color_manual( values = pal ) +
-        theme( legend.position = "bottom", legend.title=etxt(12), legend.text=etxt(11) )
+        guides( color = guide_legend(title.position="top", title.hjust=0.5) ) +
+        theme( legend.position = "bottom", legend.title=etxt(11), legend.text=etxt(10),
+              plot.margin = panmar,
+              legend.margin = margin(0,0,0,0) )
 }
 
+## Combines all panels into a single figure
+fig4 <- function()
+{
+    ## Plot individual panels
+    f4a <- fig4a()
+    f4b <- fig4b()
+    f4c <- fig4c()
+
+    ## Place everything onto the same figure
+    f4bc <- cowplot::plot_grid( f4b, f4c, labels=c("B","C"), ncol=1, label_size=20 )
+    f4 <- cowplot::plot_grid( f4a, f4bc, labels=c("A",""), ncol=2, rel_widths=c(5,4), label_size=20 )
+    
+    ggsave( "Fig4.pdf", f4, width=10, height=8 )
+}
