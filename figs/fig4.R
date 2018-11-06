@@ -3,6 +3,7 @@
 ## by Artem Sokolov
 
 library( tidyverse )
+library( ggnetwork )
 
 ## Short-hand for boldface element_text() of desired size
 etxt <- function( s, ... ) { element_text( size=s, face="bold", ... ) }
@@ -72,3 +73,77 @@ fig4b <- function()
               legend.position = c(0.95,0.05), legend.justification = c(1,0),
               legend.background = element_rect( color="black", fill="white" ) )
 }
+
+## Computes Tanimoto (Jaccard) similarity for two MACCS keys profiles
+tanimoto <- function( v1, v2 )
+{
+    ## List-ize the inputs
+    if( is.list(v1) ) return( map( v1, ~tanimoto(.x, v2) ) %>% do.call( cbind, . ) )
+    if( is.list(v2) ) return( map_dbl( v2, ~tanimoto(v1, .x) ) )
+    
+    ## Identify MACCS keys that are present in each profile
+    m1 <- v1 %>% keep( . == 1 ) %>% names
+    m2 <- v2 %>% keep( . == 1 ) %>% names
+
+    ## Compute Jaccard index
+    length( intersect(m1, m2) ) / length( union(m1, m2) )
+}
+
+## Panel C
+fig4c <- function()
+{
+    ## Load data in binary MACCS representation
+    load( "../data/MACCSbinary.RData" )
+    XX <- MACCSbinary %>% as_data_frame %>% nest( -Label, -Drug, -pubchem_id, .key="MACCS" ) %>%
+        mutate_at( "MACCS", map, ~deframe(gather(.x)) )
+    
+    ## Separate into training and test
+    Xtr <- filter( XX, !is.na(Label) ) %>% mutate_at( "pubchem_id", as.character )
+    Xte <- filter( XX, is.na(Label) ) %>% mutate( Abbrev = str_to_upper(str_sub(Drug, 1, 3)) )
+
+    ## Compute pair-wise similarity between the two sets
+    Mtr <- with( Xtr, set_names(MACCS, pubchem_id) )
+    Mte <- with( Xte, set_names(MACCS, Abbrev ) )
+    S <- tanimoto( Mte, Mtr )
+
+    ## Identify the closest drug pairs and re-annotate the match
+    R <- S %>% as.data.frame %>% rownames_to_column( "pubchem_id" ) %>%
+        gather( Abbrev, Tanimoto, -pubchem_id ) %>% group_by( Abbrev ) %>%
+        top_n( 1, Tanimoto ) %>% ungroup %>%
+        inner_join( select( Xtr, pubchem_id, Label ) ) %>%
+        mutate( Sens = case_when( Abbrev %in% c("RAP", "TUN", "VAL") ~ "Parental",
+                                 Abbrev %in% c("BEN", "BRO", "IMA") ~ "Equal",
+                                 TRUE ~ "ABC16" ) ) %>%
+        arrange( desc(Tanimoto) )
+
+    ## Common graph elements
+    sensLbls <- c( "ABC16 (Sensitive)", "Parental (Resistant)" )
+    fy <- function() {rep( (8:1)/8, 3)}
+    fx <- function(x) {rep(0:2,each=8)+x}
+
+    ## Compose the bipartite graph matrix
+    N1 <- R %>% select( vertex.names = Abbrev, Sensitivity = Sens ) %>%
+        mutate( x=fx(0.2), xend=fx(0.2), y=fy(), yend=fy()+0.001, na.x=FALSE, na.y=NA ) %>%
+        mutate_at( "Sensitivity", recode, !!!set_names(sensLbls, c("ABC16", "Parental")) )
+    N2 <- R %>% select( vertex.names = pubchem_id, Sensitivity = Label ) %>%
+        mutate( x=fx(0.8), xend=fx(0.8), y=fy(), yend=fy()+0.001, na.x=FALSE, na.y=NA ) %>%
+        mutate_at( "Sensitivity", recode, !!!set_names(sensLbls, c("Sensitive", "Resistant")) )
+    E <- R %>% select( vertex.names = Abbrev, Sensitivity = Sens, Tanimoto ) %>%
+        mutate( x=fx(0.2), xend=fx(0.8), y=fy(), yend=fy()+0.001, na.x=FALSE, na.y=FALSE ) %>%
+        mutate_at( "Sensitivity", recode, !!!set_names(sensLbls, c("ABC16", "Parental")) ) %>%
+        mutate_at( "Tanimoto", ~as.character(round(.x,2)) )
+    BG <- bind_rows( N1, N2, E )
+
+    ## Plotting elements
+    pal <- c( sensLbls, "Equal" ) %>% set_names( c("steelblue", "tomato", "black"), . )
+    
+    ## Plot the bipartite graph
+    ggplot( BG, aes(x = x, y = y, xend = xend, yend = yend) ) + theme_blank() +
+        geom_edges( color="gray40", lwd=1.25 ) +
+        geom_nodes( aes(color=Sensitivity), size=8 ) +
+        geom_nodetext( aes(label=vertex.names), nudge_y = -0.04, fontface="bold" ) +
+        geom_edgetext( aes(label=Tanimoto), color="black", fontface="bold" ) +
+        scale_color_manual( values = pal ) +
+        theme( legend.position = "bottom", legend.title=etxt(12), legend.text=etxt(11) )
+}
+
