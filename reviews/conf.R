@@ -49,6 +49,7 @@ main <- function()
                   TN = sum(pred=="Resistant" & obs=="Resistant"),
                   FP = sum(pred=="Sensitive" & obs=="Resistant"),
                   FN = sum(pred=="Resistant" & obs=="Sensitive") ) %>%
+        mutate( Precision = TP / (TP+FP), Recall = TP / (TP+FN) ) %>%
         inner_join( AUC ) %>% arrange( desc(AUC) )
 
     write_csv( R2, "Table-Performance.csv" )
