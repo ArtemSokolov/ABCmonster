@@ -87,6 +87,13 @@ ABCpal <- function()
 ## n - total number of clusters
 fig1sub <- function( XY, pfx, nClusters )
 {
+    ## MACCS keys occurring in Figure 2
+    vFig2 <- c("MACCS(145)", "MACCS(152)", "MACCS(158)",
+               "MACCS(150)", "MACCS(151)", "MACCS(161)")
+
+    ## Mapping of colors for highlighting rows
+    vMap <- c("gray30" = "pink4", "gray90" = "pink")
+    
     ## Compose the heatmap matrix
     HH <- select( XY, -Label, -Drug) %>% as.data.frame %>%
         column_to_rownames( "pubchem_id" ) %>% as.matrix %>% t
@@ -116,6 +123,12 @@ fig1sub <- function( XY, pfx, nClusters )
     g1$children[[2]]$gp$fill <- c( "gray90", "gray30" )
     g1$children[[3]]$label <- c( "Absent", "Present" )
     gg$grobs[[jAnn]] <- arrangeGrob( gg$grobs[[jAnn]], g1, heights=c(1,8) )
+
+    ## Remap colors to highlight rows
+    jMat <- which(gg$layout$name == "matrix")
+    M <- pluck( gg, "grobs", jMat, "children", 1, "gp", "fill" )
+    for( i in vFig2 ) M[i,] <- vMap[M[i,]]
+    gg$grobs[[jMat]]$children[[1]]$gp$fill <- M
     
     ## Replace legend with cluster annotations
     jleg <- which( gg$layout$name == "legend" )
